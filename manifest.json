@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Evidence Capture",
+  "version": "1.0.0",
+  "description": "Capture screenshots, network calls, and screen recordings as evidence. Download all as a ZIP.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "offscreen",
+    "tabCapture",
+    "webRequest",
+    "debugger",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "commands": {
+    "capture-screenshot": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Capture a screenshot"
+    },
+    "toggle-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Start/Stop recording"
+    }
+  }
+}

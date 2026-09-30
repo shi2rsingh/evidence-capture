@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 340px; font-family: 'Segoe UI', sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 16px; }
+    h1 { font-size: 16px; text-align: center; margin-bottom: 12px; color: #89b4fa; }
+    .btn { padding: 10px; margin-bottom: 8px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; justify-content: center; transition: opacity .2s; }
+    .btn:hover { opacity: .85; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    #btnCapture   { background: #a6e3a1; color: #1e1e2e; }
+    #btnCapture.active { background: #f38ba8; }
+    #btnScreenshot { background: #ff8282; color: #1e1e2e; }
+    #btnDownload  { background: #89b4fa; color: #1e1e2e; }
+    .action-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .action-row .btn { flex: 1; font-size: 20px; padding: 12px 0; margin-bottom: 0; }
+    #btnViewer { width: 100%; background: #cba6f7; color: #1e1e2e; }
+    .option-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #313244; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .option-row input { accent-color: #f38ba8; width: 16px; height: 16px; cursor: pointer; }
+    .status { font-size: 12px; text-align: center; margin-top: 8px; color: #a6adc8; min-height: 16px; }
+    .info { font-size: 11px; text-align: center; color: #6c7086; margin-bottom: 10px; }
+    .stats { display: flex; justify-content: space-around; margin-bottom: 12px; font-size: 12px; }
+    .stats .stat { text-align: center; }
+    .stats .stat .val { font-size: 18px; font-weight: 700; color: #89b4fa; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Evidence Capture</h1>
+
+  <div class="info">📸 Press <b>Ctrl+Shift+S</b> to save a screenshot anytime</div>
+
+  <div class="stats">
+    <div class="stat"><div class="val" id="ssCount">0</div>Screenshots</div>
+    <div class="stat"><div class="val" id="netCount">0</div>Network</div>
+    <div class="stat"><div class="val" id="vidStatus">OFF</div>Video</div>
+  </div>
+
+  <input type="text" id="sessionName" placeholder="📝 Session name (optional)…"
+    style="width:100%;padding:8px 12px;margin-bottom:8px;border-radius:8px;border:1px solid #45475a;background:#313244;color:#cdd6f4;font-size:13px;font-family:inherit" />
+
+  <label class="option-row">
+    <input type="checkbox" id="chkVideo" checked> 🎥 Include Video Recording
+  </label>
+
+  <div class="action-row">
+    <button class="btn" id="btnCapture" title="Start Capture (Ctrl+Shift+E)">▶️</button>
+    <button class="btn" id="btnScreenshot" title="Take Screenshot (Ctrl+Shift+S)">📸</button>
+    <button class="btn" id="btnDownload" title="Download Evidence ZIP">⬇️</button>
+  </div>
+  <button class="btn" id="btnViewer" title="Open Evidence Viewer">🔍 Evidence Viewer</button>
+
+  <div class="status" id="status"></div>
+
+  <script src="lib/jszip.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
