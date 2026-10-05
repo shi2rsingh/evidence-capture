@@ -11,8 +11,8 @@
     if (value === undefined) return undefined;
     try {
       return JSON.parse(JSON.stringify(value));
-    } catch (_) {
-      return value;
+    } catch (error) {
+      throw new Error(`Evidence cannot be copied safely: ${error.message}`);
     }
   }
 
@@ -46,10 +46,6 @@
         audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: normalized } },
         video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: normalized } },
       },
-      {
-        audio: { chromeMediaSource: 'tab', chromeMediaSourceId: normalized },
-        video: { chromeMediaSource: 'tab', chromeMediaSourceId: normalized },
-      },
     ];
   }
 
@@ -58,14 +54,45 @@
     delete requestMap[requestId];
   }
 
+  function estimateEvidenceSize(evidence) {
+    const snapshot = evidence && typeof evidence === 'object' ? evidence : {};
+    let size = 0;
+    for (const value of [
+      ...(Array.isArray(snapshot.screenshots) ? snapshot.screenshots : []),
+      ...(Array.isArray(snapshot.networkLogs) ? snapshot.networkLogs : []),
+      ...(Array.isArray(snapshot.videoChunks) ? snapshot.videoChunks : []),
+    ]) {
+      try {
+        size += typeof value === 'string' ? value.length * 2 : JSON.stringify(value).length * 2;
+      } catch (_) {
+        throw new Error('Evidence contains data that cannot be serialized.');
+      }
+    }
+    return size;
+  }
+
   function mergeVideoTransfer(transfer, update) {
     const next = transfer || { prefix: 'data:video/webm;base64,', totalParts: 0, parts: [] };
+    const totalParts = update.totalParts ?? next.totalParts;
+    if (!Number.isInteger(totalParts) || totalParts < 1 || totalParts > 128
+      || !Number.isInteger(update.partIndex) || update.partIndex < 0 || update.partIndex >= totalParts
+      || typeof update.part !== 'string' || update.part.length > 700000) {
+      return { ok: false, error: 'Invalid video transfer part', transfer: next };
+    }
+    if (next.totalParts > 0 && next.totalParts !== totalParts) {
+      return { ok: false, error: 'Video transfer size changed during transfer', transfer: next };
+    }
+    const existingSize = next.parts.reduce((total, part) => total + (typeof part === 'string' ? part.length : 0), 0);
+    if (existingSize + update.part.length > 128 * 700000) {
+      return { ok: false, error: 'Video transfer exceeds the supported size limit', transfer: next };
+    }
     if (typeof update.prefix === 'string') {
+      if (update.prefix !== 'data:video/webm;base64,') {
+        return { ok: false, error: 'Unsupported video format', transfer: next };
+      }
       next.prefix = update.prefix;
     }
-    if (Number.isInteger(update.totalParts) && update.totalParts > 0) {
-      next.totalParts = update.totalParts;
-    }
+    next.totalParts = totalParts;
     if (typeof update.partIndex === 'number' && update.part !== undefined) {
       next.parts[update.partIndex] = update.part;
     }
@@ -89,6 +116,7 @@
     validateStreamId,
     getMediaConstraints,
     cleanupRequestMap,
+    estimateEvidenceSize,
     mergeVideoTransfer,
   };
 

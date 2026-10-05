@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Evidence Timeline Viewer</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --surface: #111113;
+      --surface-2: #19191c;
+      --overlay: #242427;
+      --subtle: #3f3f46;
+      --text: #f5f5f5;
+      --muted: #a1a1aa;
+      --blue: #e4e4e7;
+      --green: #d4d4d8;
+      --red: #a1a1aa;
+      --yellow: #c4c4c8;
+      --teal: #f4f4f5;
+      --purple: #b4b4b8;
+      --border: rgba(255, 255, 255, 0.08);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { min-height: 100vh; }
+    button, select, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .app-shell { display: flex; min-height: 100vh; }
+    .session-sidebar {
+      width: 260px; flex: 0 0 260px; height: 100vh; position: sticky; top: 0;
+      display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border);
+    }
+    .sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 14px 10px; color: var(--blue); font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--border); }
+    .session-total { color: var(--muted); font-size: 11px; font-weight: 500; }
+    .session-search-wrap { padding: 10px; border-bottom: 1px solid var(--border); }
+    .session-search-wrap label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+    .session-search-wrap .input { width: 100%; }
+    .session-match-count { margin-top: 6px; min-height: 13px; color: var(--muted); font-size: 10px; }
+    .session-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .session-card {
+      display: block; width: 100%; margin-bottom: 6px; padding: 9px 10px; text-align: left;
+      color: var(--text); background: var(--bg); border: 1px solid var(--overlay); border-radius: 8px;
+      transition: border-color .15s, background .15s;
+    }
+    .session-card:hover, .session-card:focus-visible { border-color: var(--blue); }
+    .session-card.active { border-color: var(--blue); background: rgba(255,255,255,.08); }
+    .session-card-name { display: block; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-card-date { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .session-card-stats { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+    .session-card-current { display: block; margin-top: 4px; color: var(--blue); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+    .session-entry { display: flex; align-items: stretch; gap: 4px; margin-bottom: 6px; }
+    .session-card-select { flex: 1; min-width: 0; margin: 0; }
+    .session-delete { align-self: flex-start; padding: 6px; background: transparent; color: var(--muted); border: 1px solid var(--overlay); border-radius: 7px; }
+    .session-delete:hover { color: var(--red); border-color: var(--red); }
+    .session-empty { padding: 16px 8px; color: var(--muted); font-size: 12px; text-align: center; }
+    .sidebar-footer { padding: 12px; border-top: 1px solid var(--border); }
+    .sidebar-footer .secondary-btn { width: 100%; }
+    .zip-dropzone { border: 1px dashed var(--subtle); border-radius: 8px; padding: 10px; color: var(--muted); text-align: center; font-size: 11px; cursor: pointer; }
+    .zip-dropzone.dragover { border-color: var(--blue); color: var(--blue); background: rgba(255,255,255,.06); }
+    .sidebar-feedback { min-height: 14px; margin-top: 5px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+    .timeline-main { min-width: 0; flex: 1; padding: 20px; }
+    .toolbar {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 18px; margin-bottom: 16px; gap: 10px 16px;
+    }
+    .toolbar h1 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 19px; white-space: nowrap; }
+    .toolbar .controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .evidence-summary { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .select, .input {
+      min-width: 0; height: 36px; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 0 10px;
+    }
+    .primary-btn, .secondary-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      min-height: 36px; border: 1px solid transparent; border-radius: 8px;
+      padding: 0 12px; font-size: 12px; line-height: 1; font-weight: 650; white-space: nowrap;
+      transition: background-color .15s, border-color .15s, color .15s;
+    }
+    .primary-btn { background: var(--blue); color: #111827; }
+    .secondary-btn { background: var(--overlay); color: var(--text); border: 1px solid var(--border); }
+    .primary-btn:hover { background: #fff; }
+    .secondary-btn:hover { background: #303034; border-color: rgba(255,255,255,.16); }
+    .icon { width: 18px; height: 18px; fill: currentColor; flex: none; vertical-align: middle; }
+    .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, [tabindex="0"]:focus-visible {
+      outline: 2px solid var(--blue); outline-offset: 2px;
+    }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .video-panel { padding: 14px; }
+    .video-wrap {
+      position: relative; background: #000; border-radius: 12px; overflow: hidden;
+      aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+    .video-wrap video { width: 100%; height: 100%; display: block; background: #000; }
+    .video-wrap.no-video {
+      background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+      color: var(--muted);
+      font-size: 18px;
+      letter-spacing: 0.04em;
+    }
+    .video-wrap.no-video::after { content: "No video recording available"; }
+    .recording-controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+    .recording-controls[hidden], .watch-content[hidden], .preset-transfer [hidden], #watchImportArea[hidden] { display: none; }
+    .recording-controls select { min-width: 0; flex: 1; }
+    .player-controls {
+      margin-top: 14px; display: grid; grid-template-columns: auto minmax(80px, 1fr) auto;
+      gap: 12px; align-items: center;
+    }
+    input[type="range"] { width: 100%; min-width: 0; accent-color: var(--blue); }
+    .time-readout { min-width: 88px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+    .mini-panel { display: flex; flex-direction: column; min-height: 0; }
+    .section-head { padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 700; }
+    .shot-box { padding: 14px; }
+    .shot-frame {
+      min-height: 240px; aspect-ratio: 16 / 9; background: rgba(0,0,0,0.22); border: 1px solid var(--border);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+      cursor: pointer;
+    }
+    .shot-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .shot-frame.empty { color: var(--muted); font-size: 12px; }
+    .shot-frame:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+    .method { font-weight: 700; font-size: 11px; padding: 2px 6px; border-radius: 999px; }
+    .method.GET { background: rgba(166,227,161,0.15); color: var(--green); }
+    .method.POST { background: rgba(137,180,250,0.15); color: var(--blue); }
+    .method.PUT { background: rgba(250,179,135,0.14); color: var(--yellow); }
+    .method.DELETE { background: rgba(243,139,168,0.12); color: var(--red); }
+    .method.PATCH { background: rgba(203,166,247,0.15); color: var(--purple); }
+    .status-pill { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 6px; }
+    .status-2xx { background: rgba(166,227,161,0.15); color: var(--green); }
+    .status-3xx { background: rgba(137,180,250,0.15); color: var(--blue); }
+    .status-4xx { background: rgba(249,226,175,0.15); color: var(--yellow); }
+    .status-5xx { background: rgba(243,139,168,0.12); color: var(--red); }
+    .empty-message { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 12px; }
+
+    .bottom-grid { display: block; margin-top: 16px; }
+
+    .filter-bar {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+      padding: 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02);
+    }
+    .filter-bar > :nth-child(1), .filter-bar > :nth-child(4) { grid-column: span 2; }
+    .filter-bar > :nth-child(5), .filter-bar > :nth-child(6), .filter-bar > :nth-child(7) { grid-column: span 2; }
+    .filter-bar > .secondary-btn { width: 100%; }
+    .filter-bar .input { width: 100%; }
+    .filter-bar select {
+      width: 100%; height: 36px; padding: 0 10px; color: var(--text); color-scheme: dark;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .regex-filter { display: flex; min-width: 0; gap: 6px; }
+    .regex-filter .input { flex: 1; }
+    .regex-toggle {
+      width: 40px; flex: none; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface-2); color: var(--muted);
+    }
+    .regex-toggle.active { border-color: var(--purple); color: var(--purple); }
+    .filter-error { width: 100%; color: var(--red); font-size: 11px; }
+
+    .preset-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px 0; }
+    .preset-row > .input { width: min(200px, 100%); }
+    .preset-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip-btn {
+      min-height: 30px; padding: 0 10px; color: var(--text); font-size: 12px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .chip-btn:hover { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.07); }
+    .chip-btn.active { background: rgba(255,255,255,.12); color: var(--text); border-color: rgba(255,255,255,.2); }
+    .preset-chip { display: inline-flex; align-items: center; gap: 4px; }
+    .preset-chip .remove-preset { padding: 0 3px; color: inherit; background: transparent; border: 0; }
+    .preset-transfer { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 14px 0; }
+    .preset-transfer textarea { width: 100%; min-height: 56px; padding: 8px; border-radius: 8px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); }
+    .watch-panel { margin: 14px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .watch-toggle { width: 100%; min-height: 40px; padding: 0 12px; text-align: left; color: var(--teal); background: var(--surface-2); border: 0; font-size: 12px; font-weight: 700; }
+    .watch-content { padding: 12px; }
+    .watch-form { display: flex; flex-wrap: wrap; gap: 6px; }
+    .watch-form input, .watch-form select { min-width: 110px; min-height: 36px; flex: 1; padding: 0 9px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+    .watch-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .watch-item { display: flex; align-items: center; gap: 5px; padding: 4px 7px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
+    .watch-item button { border: 0; background: transparent; color: var(--red); }
+    .watch-results { margin-top: 8px; }
+    .watch-results table { width: 100%; min-width: 500px; border-collapse: collapse; }
+    .watch-results th, .watch-results td { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; font-size: 11px; vertical-align: top; }
+    .watch-results td { overflow-wrap: anywhere; }
+
+    .table-wrap { overflow: auto; max-height: 640px; }
+    table { width: 100%; border-collapse: collapse; min-width: 700px; table-layout: fixed; }
+    th:nth-child(1) { width: 105px; }
+    th:nth-child(2) { width: 90px; }
+    th:nth-child(4) { width: 85px; }
+    th:nth-child(5), th:nth-child(6) { width: 130px; }
+    th, td { border-bottom: 1px solid var(--border); text-align: left; padding: 10px 12px; vertical-align: top; }
+    th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-size: 12px; color: var(--muted); }
+    td { font-size: 12px; color: var(--text); }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    .table-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 10px 12px; color: var(--muted); font-size: 12px; }
+    .table-pagination button { min-height: 32px; padding: 0 10px; }
+    .sortable-heading { padding: 0; color: inherit; background: transparent; border: 0; font-size: inherit; font-weight: inherit; }
+    .clickable { cursor: pointer; }
+    .clickable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+    .request-detail { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin: 12px 14px 14px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .detail-summary { padding: 10px 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .detail-summary strong { color: var(--text); }
+    .detail-box {
+      background: rgba(0,0,0,0.18); border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+      min-height: 180px; overflow: auto;
+    }
+    .detail-box h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--text); }
+
+    .action-status { min-height: 18px; padding: 4px 12px 0; color: var(--green); font-size: 12px; }
+    .action-status.error { color: var(--red); }
+
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 50;
+      padding: 20px;
+    }
+    .modal.open { display: flex; }
+    .modal img { max-width: 92vw; max-height: 92vh; border-radius: 10px; border: 1px solid var(--border); }
+    .modal-close {
+      position: absolute; top: 20px; right: 20px; font-size: 28px; background: rgba(0,0,0,0.4); color: var(--text);
+      border: none; border-radius: 999px; width: 42px; height: 42px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    @media (max-width: 980px) {
+      .app-shell { flex-direction: column; }
+      .session-sidebar { width: 100%; height: auto; max-height: 44vh; flex: none; position: static; border-right: 0; border-bottom: 1px solid var(--border); }
+      .session-list { flex: none; max-height: 180px; }
+      .timeline-main { padding: 12px; }
+      .top-grid { grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); }
+    }
+    @media (max-width: 560px) {
+      .toolbar { grid-template-columns: 1fr; }
+      .toolbar .controls { justify-content: flex-start; }
+      .toolbar h1 { white-space: normal; }
+      .top-grid { grid-template-columns: minmax(0, 1fr); }
+      .filter-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filter-bar > :nth-child(1), .filter-bar > :nth-child(4),
+      .filter-bar > :nth-child(5), .filter-bar > :nth-child(6), .filter-bar > :nth-child(7) { grid-column: span 2; }
+      .session-sidebar { max-height: 40vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="session-sidebar" aria-label="Evidence sessions">
+      <div class="sidebar-heading">
+        <span>Evidence sessions</span>
+        <span id="sessionTotal" class="session-total"></span>
+      </div>
+      <div class="session-search-wrap">
+        <label for="sessionSearch">Search saved sessions</label>
+        <input id="sessionSearch" class="input" type="search" placeholder="Search by name or date…" autocomplete="off" aria-controls="scenarioList" />
+        <div id="sessionMatchCount" class="session-match-count" role="status" aria-live="polite"></div>
+      </div>
+      <div id="scenarioList" class="session-list" role="list" aria-label="Select an evidence session"></div>
+      <div class="sidebar-footer">
+        <button id="refreshSessions" class="secondary-btn" type="button">Refresh sessions</button>
+        <input id="zipFileInput" type="file" accept=".zip,application/zip" multiple hidden />
+        <div id="zipDropzone" class="zip-dropzone" tabindex="0" role="button" aria-label="Import evidence ZIP">Import evidence ZIP</div>
+        <div id="sidebarFeedback" class="sidebar-feedback" role="status" aria-live="polite"></div>
+      </div>
+    </aside>
+
+    <main class="timeline-main">
+      <div class="toolbar">
+        <h1><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 10.5V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5l5 5v-13z"/></svg> Evidence Timeline</h1>
+        <div class="controls">
+          <button id="downloadEvidence" class="secondary-btn" type="button">Download evidence ZIP</button>
+          <button id="openOriginalViewer" class="secondary-btn" type="button">Open original viewer</button>
+        </div>
+        <div id="evidenceSummary" class="evidence-summary" role="status" aria-live="polite"></div>
+      </div>
+
+  <div class="top-grid">
+    <div class="panel video-panel">
+      <div id="videoWrap" class="video-wrap no-video">
+        <video id="video" controls></video>
+      </div>
+      <div class="player-controls">
+        <button id="playToggle" class="primary-btn icon-btn" type="button" aria-label="Play video"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg><span>Play</span></button>
+        <input id="seekBar" type="range" min="0" max="1000" value="0" step="0.1" aria-label="Seek video and evidence timeline" />
+        <div id="timeReadout" class="time-readout" aria-live="off">00:00 / 00:00</div>
+      </div>
+      <div id="recordingControls" class="recording-controls" hidden>
+        <label for="recordingSelect">Recording</label>
+        <select id="recordingSelect" class="select" aria-label="Select video recording"></select>
+      </div>
+    </div>
+
+    <div class="panel mini-panel">
+      <div class="section-head"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10m0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/></svg> Screenshot at this point</div>
+      <div class="shot-box">
+        <div id="screenshotBox" class="shot-frame empty">No screenshot available</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="filter-bar">
+        <div class="regex-filter">
+          <input id="urlFilter" class="input" type="text" placeholder="Filter URL..." aria-label="Filter URL" />
+          <button id="urlRegexToggle" class="regex-toggle" type="button" aria-pressed="false" title="Toggle URL regular expression">.*</button>
+        </div>
+        <select id="methodFilter">
+          <option value="">All methods</option>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="DELETE">DELETE</option>
+          <option value="PATCH">PATCH</option>
+          <option value="OPTIONS">OPTIONS</option>
+          <option value="HEAD">HEAD</option>
+        </select>
+        <select id="statusFilter">
+          <option value="">All statuses</option>
+          <option value="2xx">2xx</option>
+          <option value="3xx">3xx</option>
+          <option value="4xx">4xx</option>
+          <option value="5xx">5xx</option>
+        </select>
+        <div class="regex-filter">
+          <input id="mimeFilter" class="input" type="text" placeholder="Filter MIME..." aria-label="Filter MIME type" />
+          <button id="mimeRegexToggle" class="regex-toggle" type="button" aria-pressed="false" title="Toggle MIME regular expression">.*</button>
+        </div>
+        <button id="clearFilters" class="secondary-btn" type="button">Clear</button>
+        <button id="copyVisibleLogs" class="secondary-btn" type="button">Copy visible JSON</button>
+        <button id="copySelectedLog" class="secondary-btn" type="button">Copy selected request</button>
+      </div>
+      <div class="preset-row">
+        <input id="presetName" class="input" type="text" placeholder="Preset name" style="max-width:200px;" />
+        <button id="savePreset" class="primary-btn" type="button">Save filter</button>
+        <div id="presetPills" class="preset-pills"></div>
+      </div>
+      <div id="filterErrors" class="filter-error" role="status" aria-live="polite"></div>
+      <div id="networkCount" class="detail-summary" role="status" aria-live="polite"></div>
+      <div class="preset-transfer">
+        <button id="sharePresets" class="secondary-btn" type="button">Share filter presets</button>
+        <button id="togglePresetImport" class="secondary-btn" type="button">Import presets</button>
+        <div id="presetImportArea" hidden style="width:100%">
+          <textarea id="presetImportText" aria-label="Paste shared filter presets JSON" placeholder="Paste shared filter presets JSON…"></textarea>
+          <button id="applyPresetImport" class="primary-btn" type="button">Apply imported presets</button>
+        </div>
+      </div>
+      <div id="actionStatus" class="action-status" role="status" aria-live="polite"></div>
+      <section class="watch-panel">
+        <button id="watchToggle" class="watch-toggle" type="button" aria-expanded="false">Watch expressions</button>
+        <div id="watchContent" class="watch-content" hidden>
+          <div class="watch-form">
+            <input id="watchName" type="text" placeholder="Variable name" aria-label="Watch variable name" />
+            <select id="watchSource" aria-label="Watch request or response">
+              <option value="responseBody">Response body</option>
+              <option value="requestBody">Request body</option>
+            </select>
+            <input id="watchPath" type="text" placeholder="JSON path (e.g. data.token)" aria-label="JSON path to watch" />
+            <button id="addWatch" class="secondary-btn" type="button">Add watch</button>
+          </div>
+          <div id="watchList" class="watch-list"></div>
+          <div class="watch-form">
+            <input id="watchPresetName" type="text" placeholder="Watch preset name" aria-label="Watch preset name" />
+            <button id="saveWatchPreset" class="secondary-btn" type="button">Save watch preset</button>
+            <button id="shareWatchPresets" class="secondary-btn" type="button">Share</button>
+            <button id="toggleWatchImport" class="secondary-btn" type="button">Import</button>
+          </div>
+          <div id="watchImportArea" hidden>
+            <textarea id="watchImportText" aria-label="Paste shared watch presets JSON" placeholder="Paste watch preset JSON…"></textarea>
+            <button id="applyWatchImport" class="secondary-btn" type="button">Apply watch presets</button>
+          </div>
+          <div id="watchPresetPills" class="preset-pills"></div>
+          <div id="watchResults" class="watch-results"></div>
+        </div>
+      </section>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><button class="sortable-heading" data-sort="timestamp" type="button">Time</button></th>
+              <th><button class="sortable-heading" data-sort="method" type="button">Method</button></th>
+              <th><button class="sortable-heading" data-sort="url" type="button">URL</button></th>
+              <th><button class="sortable-heading" data-sort="status" type="button">Status</button></th>
+              <th><button class="sortable-heading" data-sort="mimeType" type="button">MIME</button></th>
+              <th><button class="sortable-heading" data-sort="resourceType" type="button">Type</button></th>
+            </tr>
+          </thead>
+          <tbody id="networkTableBody"></tbody>
+        </table>
+      </div>
+      <div id="networkPagination" class="table-pagination" aria-label="Network table pages"></div>
+      <div id="detailPanel" class="request-detail"></div>
+    </div>
+
+  </div>
+
+  <div id="imageModal" class="modal" aria-label="Full-screen screenshot preview" aria-modal="true" role="dialog">
+    <button id="closeModal" class="modal-close" type="button" aria-label="Close full-screen screenshot"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m18.3 5.7-1.4-1.4L12 9.2 7.1 4.3 5.7 5.7l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z"/></svg></button>
+    <img id="modalImage" alt="Full-size screenshot" />
+  </div>
+  </main>
+  </div>
+
+  <script src="lib/jszip.min.js"></script>
+  <script src="zip-safety.js"></script>
+  <script src="timeline-logic.js"></script>
+  <script src="timeline-viewer.js"></script>
+</body>
+</html>

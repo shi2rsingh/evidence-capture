@@ -33,18 +33,34 @@ const PAGE_SIZE = 50;
    ZIP file parser (shared helper)
    ════════════════════════════════════════════ */
 async function parseZipFile(file) {
-  const zip = await JSZip.loadAsync(file);
+  const zip = await ZipSafety.loadSafeZip(file);
   const data = { screenshots: [], networkLogs: [], videoChunks: [], metadata: null };
 
   // Read metadata if present
   const metaFile = zip.file('metadata.json');
   if (metaFile) {
-    try { data.metadata = JSON.parse(await metaFile.async('string')); } catch { }
+    try {
+      const parsed = JSON.parse(await metaFile.async('string'));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('metadata.json must contain an object.');
+      }
+      data.metadata = parsed;
+    } catch (error) {
+      throw new Error(`Invalid metadata.json in ZIP: ${error.message}`);
+    }
   }
 
   const networkJson = zip.file('network_logs.json');
   if (networkJson) {
-    data.networkLogs = JSON.parse(await networkJson.async('string'));
+    try {
+      const parsedLogs = JSON.parse(await networkJson.async('string'));
+      if (!Array.isArray(parsedLogs)) {
+        throw new Error('network_logs.json must contain an array.');
+      }
+      data.networkLogs = parsedLogs;
+    } catch (error) {
+      throw new Error(`Invalid network_logs.json in ZIP: ${error.message}`);
+    }
   }
 
   const ssFolder = zip.folder('screenshots');
@@ -54,7 +70,8 @@ async function parseZipFile(file) {
     for (const { path, file: f } of ssFiles) {
       const base64 = await f.async('base64');
       const ext = path.split('.').pop().toLowerCase();
-      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const mime = ext === 'png' ? 'image/png' : ['jpg', 'jpeg'].includes(ext) ? 'image/jpeg' : null;
+      if (!mime) throw new Error(`Unsupported screenshot format: ${path}`);
       data.screenshots.push({ name: path, dataUrl: 'data:' + mime + ';base64,' + base64 });
     }
   }
@@ -64,6 +81,7 @@ async function parseZipFile(file) {
     const vidFiles = [];
     vidFolder.forEach((path, f) => { if (!f.dir) vidFiles.push({ path, file: f }); });
     for (const { path, file: f } of vidFiles) {
+      if (!path.toLowerCase().endsWith('.webm')) throw new Error(`Unsupported video format: ${path}`);
       const base64 = await f.async('base64');
       data.videoChunks.push('data:video/webm;base64,' + base64);
     }
@@ -115,14 +133,27 @@ function App() {
     return () => chrome.runtime.onMessage.removeListener(onMsg);
   }, []);
 
-  const loadScenario = useCallback((scenario, source, id) => {
-    setViewData({
-      screenshots: scenario.screenshots || [],
-      networkLogs: scenario.networkLogs || [],
-      videoChunks: scenario.videoChunks || [],
-    });
-    setSelectedId(id);
-    setDataSource(source);
+  const loadScenario = useCallback(async (scenario, source, id) => {
+    setLoading(true);
+    try {
+      let selected = scenario;
+      if (source === 'saved') {
+        const response = await send({ action: 'getScenario', id: scenario.id || scenario.date });
+        if (!response || response.error) throw new Error(response?.error || 'Could not load saved evidence.');
+        selected = response.scenario;
+      }
+      setViewData({
+        screenshots: selected.screenshots || [],
+        networkLogs: selected.networkLogs || [],
+        videoChunks: selected.videoChunks || [],
+      });
+      setSelectedId(id);
+      setDataSource(source);
+    } catch (error) {
+      setZipError(error.message || 'Could not load saved evidence.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const deleteScenario = useCallback(async (scenarioId, e) => {
@@ -157,9 +188,9 @@ function App() {
   }, [refreshLive]);
 
   // ZIP handlers — each loaded ZIP is added to the list
-  let zipIdCounter = useRef(0);
+  const zipIdCounter = useRef(0);
   const handleZipFile = async (file) => {
-    if (!file || !file.name.endsWith('.zip')) { setZipError('Not a ZIP file'); return; }
+    if (!file || !/\.zip$/i.test(file.name)) { setZipError('Not a ZIP file'); return; }
     setZipLoading(true); setZipError(null);
     try {
       const parsed = await parseZipFile(file);
@@ -171,10 +202,13 @@ function App() {
       setViewData(parsed);
       setSelectedId('zip-' + id);
       setDataSource('zip');
-    } catch (err) { setZipError(err.message); }
-    setZipLoading(false);
+    } catch (err) { setZipError(err?.message || 'Could not import ZIP file.'); }
+    finally { setZipLoading(false); }
   };
-  const handleDrop = (e) => { e.preventDefault(); setDragover(false); Array.from(e.dataTransfer?.files || []).forEach(f => handleZipFile(f)); };
+  const handleZipFiles = async (files) => {
+    for (const file of Array.from(files || [])) await handleZipFile(file);
+  };
+  const handleDrop = (e) => { e.preventDefault(); setDragover(false); handleZipFiles(e.dataTransfer?.files); };
   const handleDragOver = (e) => { e.preventDefault(); setDragover(true); };
 
   // Derive selected name (must be before downloadCurrent)
@@ -234,7 +268,8 @@ function App() {
       a.href = url;
       a.download = `${name.replace(/[^a-zA-Z0-9_-]/g, '_')}.zip`;
       a.click();
-      URL.revokeObjectURL(url);
+      // Defer revocation so the browser has time to initiate the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       setDownloadError('Download failed: ' + err.message);
       setTimeout(() => setDownloadError(null), 5000);
@@ -281,9 +316,9 @@ function App() {
                 <div class="name" title=${s.name}>${s.name}</div>
                 <div class="date">${new Date(s.date).toLocaleDateString()}</div>
                 <div class="stats-row">
-                  <span>📸 ${(s.screenshots || []).length}</span>
-                  <span>🌐 ${(s.networkLogs || []).length}</span>
-                  <span>🎥 ${(s.videoChunks || []).length}</span>
+                  <span>📸 ${s.screenshotCount || 0}</span>
+                  <span>🌐 ${s.networkLogCount || 0}</span>
+                  <span>🎥 ${s.videoCount || 0}</span>
                 </div>
               </div>
               <button class="del" onClick=${(e) => deleteScenario(s.id || s.date, e)} title="Delete">🗑️</button>
@@ -323,7 +358,7 @@ function App() {
           ${zipLoading ? '⏳ Loading…' : '📦 Drop ZIP or click'}
           <div class="hint">Import evidence ZIP</div>
           <input ref=${fileInputRef} type="file" accept=".zip" multiple style="display:none"
-            onChange=${(e) => { Array.from(e.target.files || []).forEach(f => handleZipFile(f)); }} />
+            onChange=${(e) => { handleZipFiles(e.target.files); e.target.value = ''; }} />
         </div>
         ${zipError && html`<div style="color:var(--red);font-size:10px;padding:0 8px 8px;text-align:center">${zipError}</div>`}
       </div>
@@ -332,7 +367,10 @@ function App() {
       <aside class="sidebar">
         <div class="sidebar-header">
           <span>🔍 Viewer ${sourceLabel}</span>
-          ${dataSource !== 'live' && html`<button class="icon-btn" onClick=${downloadCurrent} title="Download current evidence as ZIP" style="margin-left:auto">⬇️</button>`}
+          <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+            <button class="icon-btn" onClick=${() => chrome.tabs.create({ url: chrome.runtime.getURL('timeline-viewer.html') })} title="Open Timeline Viewer">🎬</button>
+            ${dataSource !== 'live' && html`<button class="icon-btn" onClick=${downloadCurrent} title="Download current evidence as ZIP">⬇️</button>`}
+          </div>
         </div>
         ${downloadError && html`<div style="padding:4px 12px;font-size:11px;color:var(--red);background:rgba(243,139,168,0.1)">${downloadError}</div>`}
         <nav class="sidebar-nav">
@@ -404,20 +442,25 @@ function NetworkTab({ logs }) {
   const [shareFeedback, setShareFeedback] = useState(null); // null | 'copied' | 'empty'
   const [importFeedback, setImportFeedback] = useState(null); // null | 'done' | 'error'
 
-  const exportTrackerPresets = () => {
+  const exportTrackerPresets = async () => {
     if (!trackerPresets.length) {
       setShareFeedback('empty');
       setTimeout(() => setShareFeedback(null), 2000);
       return;
     }
     const json = JSON.stringify(trackerPresets);
-    const ta = document.createElement('textarea');
-    ta.value = json;
-    ta.style.cssText = 'position:fixed;left:-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
+    try {
+      await navigator.clipboard.writeText(json);
+    } catch (_) {
+      // Fallback for restricted environments where Clipboard API is unavailable.
+      const ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setShareFeedback('copied');
     setTimeout(() => setShareFeedback(null), 2000);
   };

@@ -19,6 +19,12 @@ test('cloneEvidenceSnapshot creates independent arrays', () => {
   assert.equal(evidence.videoChunks[0], 'data:video/webm;base64,first');
 });
 
+test('estimateEvidenceSize rejects values that cannot be serialized for storage', () => {
+  const circular = {};
+  circular.self = circular;
+  assert.throws(() => logic.estimateEvidenceSize({ networkLogs: [circular] }), /cannot be serialized/);
+});
+
 test('validateTabId rejects invalid active tab', () => {
   assert.throws(() => logic.validateTabId(null), /No active tab available/);
   assert.throws(() => logic.validateTabId({}), /No active tab available/);
@@ -56,6 +62,43 @@ test('mergeVideoTransfer rejects incomplete final chunk payload', () => {
     partIndex: 1,
     part: 'b',
     isLast: true,
+  });
+
+  test('mergeVideoTransfer rejects inconsistent metadata and oversized transfers', () => {
+    const initial = logic.mergeVideoTransfer(null, {
+      totalParts: 2,
+      partIndex: 0,
+      part: 'first',
+    });
+    assert.equal(initial.ok, true);
+    const mismatch = logic.mergeVideoTransfer(initial.transfer, {
+      totalParts: 3,
+      partIndex: 1,
+      part: 'second',
+    });
+    assert.equal(mismatch.ok, false);
+
+    const tooManyParts = logic.mergeVideoTransfer(null, {
+      totalParts: 129,
+      partIndex: 0,
+      part: 'x',
+    });
+    assert.equal(tooManyParts.ok, false);
+  });
+
+  test('estimateEvidenceSize counts complete URLs, bodies, headers, and media payloads', () => {
+    const evidence = {
+      screenshots: [],
+      networkLogs: [{
+        url: 'https://example.test/?token=full-value',
+        requestHeaders: { authorization: 'Bearer full-value' },
+        requestBody: '{"password":"full-value"}',
+        responseBody: 'complete response',
+      }],
+      videoChunks: ['data:video/webm;base64,QUJD'],
+    };
+
+    assert.ok(logic.estimateEvidenceSize(evidence) >= JSON.stringify(evidence.networkLogs[0]).length * 2);
   });
 
   assert.equal(result.ok, false);

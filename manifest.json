@@ -1,15 +1,13 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "116",
   "name": "Evidence Capture",
   "version": "1.0.0",
   "description": "Capture screenshots, network calls, and screen recordings as evidence. Download all as a ZIP.",
   "permissions": [
     "activeTab",
-    "scripting",
-    "downloads",
     "offscreen",
     "tabCapture",
-    "webRequest",
     "debugger",
     "storage",
     "unlimitedStorage"

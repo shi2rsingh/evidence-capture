@@ -20,6 +20,7 @@
     .option-row input { accent-color: #f38ba8; width: 16px; height: 16px; cursor: pointer; }
     .status { font-size: 12px; text-align: center; margin-top: 8px; color: #a6adc8; min-height: 16px; }
     .info { font-size: 11px; text-align: center; color: #6c7086; margin-bottom: 10px; }
+    .privacy-notice { font-size: 11px; line-height: 1.45; color: #f9e2af; background: #313244; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
     .stats { display: flex; justify-content: space-around; margin-bottom: 12px; font-size: 12px; }
     .stats .stat { text-align: center; }
     .stats .stat .val { font-size: 18px; font-weight: 700; color: #89b4fa; }
@@ -29,6 +30,7 @@
   <h1>🔍 Evidence Capture</h1>
 
   <div class="info">📸 Press <b>Ctrl+Shift+S</b> to save a screenshot anytime</div>
+  <div class="privacy-notice">Full network data is captured without redaction. Headers, URLs, and request/response bodies may contain credentials or personal data.</div>
 
   <div class="stats">
     <div class="stat"><div class="val" id="ssCount">0</div>Screenshots</div>
@@ -48,7 +50,9 @@
     <button class="btn" id="btnScreenshot" title="Take Screenshot (Ctrl+Shift+S)">📸</button>
     <button class="btn" id="btnDownload" title="Download Evidence ZIP">⬇️</button>
   </div>
+  <button class="btn" id="btnRecover" style="width:100%;background:#f9e2af;color:#1e1e2e" title="Stop active capture and save all evidence">⟳ Stop &amp; Save / Recover</button>
   <button class="btn" id="btnViewer" title="Open Evidence Viewer">🔍 Evidence Viewer</button>
+  <button class="btn" id="btnTimelineViewer" title="Open Timeline Viewer">🎬 Timeline Viewer</button>
 
   <div class="status" id="status"></div>
 
